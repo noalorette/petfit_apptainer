@@ -1,5 +1,5 @@
 ---
-title: "SRTM Model Fitting Report"
+title: "MRTM1 Model Fitting Report"
 output:
   html_document:
     toc: true
@@ -59,11 +59,11 @@ file.remove(oldfiles)
 
 
 
-This report summarises the SRTM model fitting step.
+This report summarises the MRTM1 model fitting step.
 
 # Analysis Configuration
 
-**Model:** `r params$model_number` - SRTM (Simplified Reference Tissue Model)
+**Model:** `r params$model_number` - MRTM1 (Multilinear Reference Tissue Model 1)
 
 **Analysis folder:** `r params$analysis_folder`
 
@@ -84,21 +84,20 @@ if (!is.null(config$Models)) {
   }
 }
 
-if (!is.null(model_config) && model_config$type == "SRTM") {
+if (!is.null(model_config) && model_config$type == "MRTM1") {
   # Create configuration table
   config_items <- list(
-    "Model Type" = "SRTM (Simplified Reference Tissue Model)",
-    "R1 Start Value" = model_config$R1$start %||% "Default",
-    "R1 Lower Bound" = model_config$R1$lower %||% "Default",
-    "R1 Upper Bound" = model_config$R1$upper %||% "Default",
-    "k2 Start Value" = model_config$k2$start %||% "Default",
-    "k2 Lower Bound" = model_config$k2$lower %||% "Default",
-    "k2 Upper Bound" = model_config$k2$upper %||% "Default",
-    "BPnd Start Value" = model_config$BPnd$start %||% "Default",
-    "BPnd Lower Bound" = model_config$BPnd$lower %||% "Default",
-    "BPnd Upper Bound" = model_config$BPnd$upper %||% "Default",
-    "Multstart Iterations" = model_config$multstart_iter %||% 1
+    "Model Type" = "MRTM1 (Multilinear Reference Tissue Model 1)"
   )
+
+  # Add t* configuration if present
+  if (!is.null(model_config$tstar)) {
+    tstar_type <- model_config$tstar_type %||% "frames"
+    config_items[["t* Value"]] <- model_config$tstar
+    config_items[["t* Type"]] <- tstar_type
+  } else {
+    config_items[["t* Value"]] <- "Not set (use all frames)"
+  }
 
   # Add subset information if configured
   if (!is.null(model_config$subset)) {
@@ -117,20 +116,20 @@ if (!is.null(model_config) && model_config$type == "SRTM") {
     Value = map_chr(config_items, as.character)
   )
 
-  kable(config_df, caption = "SRTM Model Configuration")
+  kable(config_df, caption = "MRTM1 Model Configuration")
 
 } else {
-  cat("SRTM model configuration not found or incomplete.")
+  cat("MRTM1 model configuration not found or incomplete.")
 }
 ```
 
 ```{r setup-conditions, echo=FALSE}
-# Verify we have a valid SRTM configuration
-has_srtm_config <- !is.null(model_config) && model_config$type == "SRTM"
+# Verify we have a valid MRTM1 configuration
+has_mrtm1_config <- !is.null(model_config) && model_config$type == "MRTM1"
 
-# Exit early if not a SRTM configuration
-if (!has_srtm_config) {
-  cat("Invalid or missing SRTM configuration. This report should not have been generated.")
+# Exit early if not a MRTM1 configuration
+if (!has_mrtm1_config) {
+  cat("Invalid or missing MRTM1 configuration. This report should not have been generated.")
   knitr::knit_exit()
 }
 ```
@@ -222,25 +221,14 @@ model_data <- tac_data %>%
 ```
 
 
-# SRTM Model Fitting
+# MRTM1 Model Fitting
 
-Now we proceed to the actual SRTM model fitting using all available regional TACs.
+Now we proceed to the actual MRTM1 model fitting using all available regional TACs.
 
 ```{r model-prep}
-# Extract model parameters from configuration
-R1_start <- model_config$R1$start %||% 1
-R1_lower <- model_config$R1$lower %||% 0
-R1_upper <- model_config$R1$upper %||% 10
-
-k2_start <- model_config$k2$start %||% 0.1
-k2_lower <- model_config$k2$lower %||% 0
-k2_upper <- model_config$k2$upper %||% 1
-
-bp_start <- model_config$BPnd$start %||% 1.5
-bp_lower <- model_config$BPnd$lower %||% 0
-bp_upper <- model_config$BPnd$upper %||% 15
-
-multstart_iter <- model_config$multstart_iter %||% 1
+# Extract t* parameters from configuration (optional)
+tstar <- model_config$tstar %||% NULL
+tstar_type <- model_config$tstar_type %||% "frames"
 
 # Extract TAC subset parameters
 subset_config <- model_config$subset
@@ -258,31 +246,23 @@ if (!is.null(subset_config) && (!is.null(subset_config$start) || !is.null(subset
 
 
 ```{r model-fitting, warning=TRUE}
-# Safe SRTM function to handle errors
-safe_srtm <- possibly(srtm, otherwise = NA)
+# Safe MRTM1 function to handle errors
+safe_mrtm1 <- possibly(mrtm1, otherwise = NA)
 
-# Fit SRTM model to all regional TACs
+# Fit MRTM1 model to all regional TACs
 model_data <- model_data %>%
   group_by(output_stem, region) %>%
-  mutate(fit_srtm = map(tacs,
-                         ~safe_srtm(t_tac = .x$frame_mid,
+  mutate(fit_mrtm1 = map(tacs,
+                         ~safe_mrtm1(t_tac = .x$frame_mid,
                                     reftac = .x$RefTAC,
                                     roitac = .x$TAC,
                                     weights = .x$weights,
+                                    tstar = tstar,
+                                    tstar_type = tstar_type,
                                     frameStartEnd = frameStartEnd,
-                                    timeStartEnd = timeStartEnd,
-                                    R1.start = R1_start,
-                                    R1.lower = R1_lower,
-                                    R1.upper = R1_upper,
-                                    k2.start = k2_start,
-                                    k2.lower = k2_lower,
-                                    k2.upper = k2_upper,
-                                    bp.start = bp_start,
-                                    bp.lower = bp_lower,
-                                    bp.upper = bp_upper,
-                                    multstart_iter = multstart_iter))) %>%
+                                    timeStartEnd = timeStartEnd))) %>%
   ungroup() %>%
-  mutate(success = map_dbl(fit_srtm, length) > 1)
+  mutate(success = map_dbl(fit_mrtm1, length) > 1)
 ```
 
 ```{r, results='asis'}
@@ -307,8 +287,8 @@ model_data <- model_data %>%
 ```{r}
 model_res <- model_data %>%
   ungroup() %>%
-  mutate(par = map(fit_srtm, "par")) %>%
-  select(-fit_srtm, -tacs)
+  mutate(par = map(fit_mrtm1, "par")) %>%
+  select(-fit_mrtm1, -tacs)
 ```
 
 ### Estimates
@@ -317,7 +297,7 @@ model_res <- model_data %>%
 par_table <- model_res %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
-  unnest(par) %>% 
+  unnest(par) %>%
   rename(BPnd = bp)
 
 par_table %>%
@@ -332,12 +312,12 @@ Here is shown the standard error as a fraction of the mean value (i.e. 1 = 100\%
 ```{r}
 par_se_table <- model_data %>%
   ungroup() %>%
-  mutate(par.se = map(fit_srtm, "par.se")) %>%
-  select(-fit_srtm, -tacs) %>%
+  mutate(par.se = map(fit_mrtm1, "par.se")) %>%
+  select(-fit_mrtm1, -tacs) %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
   unnest(par.se) %>%
-  select(where(~ mean(is.na(.x)) < 1)) %>% 
+  select(where(~ mean(is.na(.x)) < 1)) %>%
   rename(BPnd.se = bp.se)
 
 par_se_table %>%
@@ -358,12 +338,12 @@ reduced_chisq <- function(fit) {
 
 gof_table <- model_data %>%
   ungroup() %>%
-  mutate(gof = map(fit_srtm, ~tibble(
+  mutate(gof = map(fit_mrtm1, ~tibble(
     AIC = AIC(.x$fit),
     BIC = BIC(.x$fit),
     RSS = RSS(.x$fit),
     reduced_chisq = reduced_chisq(.x$fit)))) %>%
-  select(-fit_srtm, -tacs) %>%
+  select(-fit_mrtm1, -tacs) %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
   unnest(gof) %>%
@@ -382,8 +362,11 @@ gof_table %>%
 #### Overall Histogram
 
 ```{r, fig.width=7, fig.height=7}
+# Dynamically select available parameters
+available_params <- intersect(colnames(par_table), c("R1", "k2", "BPnd", "k2prime"))
+
 par_table_long <- par_table %>%
-  pivot_longer(cols=c(R1, k2, BPnd, k2prime),
+  pivot_longer(cols=any_of(available_params),
                names_to = "Parameter",
                values_to = "Value")
 
@@ -411,7 +394,7 @@ ggplot(par_table_long, aes(x=Value, fill=region)) +
 ```{r, fig.height=4, fig.width=6}
 fitplots <- model_data %>%
   mutate(title = paste(pet, " : ", region)) %>%
-  mutate(fitplot = pmap(list(fit_srtm, region, title),
+  mutate(fitplot = pmap(list(fit_mrtm1, region, title),
                         ~plot(..1, roiname=..2) +
                           labs(title = ..3,
                                y = "Radioactivity (kBq)",
@@ -426,7 +409,7 @@ walk(fitplots, ~print(.x))
 ```{r, fig.height=4, fig.width=6}
 resplots <- model_data %>%
   mutate(title = paste(pet, " : ", region)) %>%
-  mutate(resplot = pmap(list(fit_srtm, title),
+  mutate(resplot = pmap(list(fit_mrtm1, title),
                         ~plot_residuals(..1) +
                           labs(title = ..2))) %>%
   pull(resplot)
@@ -450,7 +433,7 @@ savepar <- inner_join(par_table,
 
 write_tsv(savepar,
           file=paste0(analysis_folder, "/",
-                      "model_", "SRTM","_",
+                      "model_", "MRTM1","_",
                       "desc-", desc,"_",
                       "kinpar.tsv"))
 ```
@@ -472,7 +455,7 @@ savepar_pet <- savepar %>%
   nest(.key="kinpars") %>%
   inner_join(folder_data) %>%
   mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_",
-                           "model_", "SRTM","_",
+                           "model_", "MRTM1","_",
                             "desc-", desc,"_",
                             "kinpar.tsv"))
 
@@ -480,12 +463,19 @@ walk2(savepar_pet$kinpars, savepar_pet$filename, ~write_tsv(.x, .y))
 ```
 
 ```{r}
+# Determine t* description for JSON metadata
+tstar_desc <- if (!is.null(tstar)) {
+  paste0("t* = ", tstar, " (", tstar_type, ")")
+} else {
+  "All frames used (no t* restriction)"
+}
+
 savepar_pet <- savepar_pet %>%
   group_by(pet) %>%
   mutate(jsondat = map(kinpars, ~list(
-      Description = "Simplified Reference Tissue Model fit using nonlinear least squares estimation.",
-      ModelName = "SRTM",
-      AdditionalModelDetails = "Reference tissue model - no blood data required"))) %>%
+      Description = "Multilinear Reference Tissue Model 1 fit using linear regression.",
+      ModelName = "MRTM1",
+      AdditionalModelDetails = str_glue("Reference tissue model - no blood data required. {tstar_desc}")))) %>%
   mutate(jsondat = jsonlite::toJSON(jsondat, pretty = TRUE, auto_unbox = TRUE)) %>%
   mutate(filename_json = str_replace(filename, ".tsv", ".json"))
 
@@ -501,7 +491,7 @@ walk2(savepar_pet$jsondat,
 ```{r}
 savefits <- model_data %>%
   filter(success) %>%
-  mutate(fitvals = map(fit_srtm, ~{
+  mutate(fitvals = map(fit_mrtm1, ~{
     .x$tacs %>%
       mutate(Weights = .x$weights) %>%
       select(
@@ -512,7 +502,7 @@ savefits <- model_data %>%
         weights = Weights
       )
   })) %>%
-  select(any_of(c("sub", "ses", "task", "trc", "run", 
+  select(any_of(c("sub", "ses", "task", "trc", "run",
                   "rec", "pet", "region")), fitvals) %>%
   unnest(cols=c("fitvals")) %>%
   group_by(across(intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
@@ -522,7 +512,7 @@ savefits <- model_data %>%
 savefits_pet <- savefits %>%
   inner_join(folder_data) %>%
   mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_",
-                           "model_", "SRTM","_",
+                           "model_", "MRTM1","_",
                             "desc-", desc,"fitted",
                             "_",
                             "tacs.tsv"))
@@ -534,8 +524,9 @@ walk2(savefits_pet$fitvals, savefits_pet$filename, ~write_tsv(.x, .y))
 savefits_pet <- savefits_pet %>%
   group_by(pet) %>%
   mutate(jsondat = map(fitvals, ~list(
-      Description = "Simplified Reference Tissue Model fitted values.",
-      ModelName = "SRTM",
+      Description = "Multilinear Reference Tissue Model 1 fitted values.",
+      ModelName = "MRTM1",
+      AdditionalModelDetails = str_glue("{tstar_desc}"),
       frame_mid = "The frame middle time in minutes",
       TAC = "TAC radioactivity data in kBq to which the model was fitted.",
       TAC_fitted = "Model fitted values.",
