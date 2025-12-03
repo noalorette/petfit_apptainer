@@ -116,10 +116,12 @@ subset_tacs_by_frames <- function(tacs_data, subset_type = NULL,
       dplyr::select(-dplyr::any_of("frame_num"))
 
   } else if (subset_type == "time") {
-    # Subset by time in minutes
-    # Use frame_start for filtering
+    # Subset by time in minutes using frame midpoint
+    # Convert time inputs from minutes to seconds (frame_mid is in seconds)
+    start_seconds <- start_point * 60
+    end_seconds <- end_point * 60
     filtered_data <- filtered_data %>%
-      dplyr::filter(frame_start >= start_point & frame_start <= end_point)
+      dplyr::filter(frame_mid >= start_seconds & frame_mid <= end_seconds)
   }
 
   return(filtered_data)

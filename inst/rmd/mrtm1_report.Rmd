@@ -3,20 +3,24 @@ title: "MRTM1 Model Fitting Report"
 output:
   html_document:
     toc: true
+    toc_float: true
     toc_depth: 2
     code_folding: hide
 params:
   model_number: "Model 1"
   analysis_folder: NULL
   bids_dir: NULL
+  blood_dir: NULL
 ---
 
-<!-- For temporary debugging, this defines temporary parameters for the parameterised report -->
+<!-- <!-- For temporary debugging, this defines temporary parameters for the parameterised report --> -->
 
-```{r}
-analysis_folder <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/derivatives/petfit/Secondary_Analysis/"
-bids_dir <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/"
-```
+<!-- ```{r} -->
+<!-- analysis_folder <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/derivatives/petfit/Secondary_Analysis/" -->
+<!-- bids_dir <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/" -->
+<!-- ``` -->
+
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
@@ -156,7 +160,7 @@ weightsdata <- tibble(
 
 
 tacs_files <- list.files(analysis_folder,
-                        pattern = "*_desc-combinedregions_tacs.tsv",
+                        pattern = "*_desc-targetregions_tacs.tsv",
                         recursive = TRUE)
 
 tac_data <- tibble(

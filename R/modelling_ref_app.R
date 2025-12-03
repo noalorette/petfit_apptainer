@@ -454,7 +454,7 @@ modelling_ref_app <- function(bids_dir = NULL, derivatives_dir = NULL, blood_dir
                                column(4,
                                  selectInput("ref_fitting_method", "Reference TAC Method:",
                                            choices = c("Raw Reference TAC" = "raw",
-                                                     "Fit the Reference TAC with Feng+1TC Reference Model" = "feng1tc",
+                                                     "Fit the Reference TAC with Feng+1TC Reference Model (slow)" = "feng1tc",
                                                      "Fit the Reference TAC with a Spline Model" = "spline"),
                                            selected = "raw",
                                            width = "100%")

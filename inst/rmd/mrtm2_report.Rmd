@@ -1,5 +1,5 @@
 ---
-title: "SRTM Model Fitting Report"
+title: "MRTM2 Model Fitting Report"
 output:
   html_document:
     toc: true
@@ -19,7 +19,6 @@ params:
 <!-- analysis_folder <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/derivatives/petfit/Secondary_Analysis/" -->
 <!-- bids_dir <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/" -->
 <!-- ``` -->
-
 
 
 
@@ -64,11 +63,11 @@ file.remove(oldfiles)
 
 
 
-This report summarises the SRTM model fitting step.
+This report summarises the MRTM2 model fitting step.
 
 # Analysis Configuration
 
-**Model:** `r params$model_number` - SRTM (Simplified Reference Tissue Model)
+**Model:** `r params$model_number` - MRTM2 (Multilinear Reference Tissue Model 2)
 
 **Analysis folder:** `r params$analysis_folder`
 
@@ -89,21 +88,44 @@ if (!is.null(config$Models)) {
   }
 }
 
-if (!is.null(model_config) && model_config$type == "SRTM") {
+if (!is.null(model_config) && model_config$type == "MRTM2") {
   # Create configuration table
   config_items <- list(
-    "Model Type" = "SRTM (Simplified Reference Tissue Model)",
-    "R1 Start Value" = model_config$R1$start %||% "Default",
-    "R1 Lower Bound" = model_config$R1$lower %||% "Default",
-    "R1 Upper Bound" = model_config$R1$upper %||% "Default",
-    "k2 Start Value" = model_config$k2$start %||% "Default",
-    "k2 Lower Bound" = model_config$k2$lower %||% "Default",
-    "k2 Upper Bound" = model_config$k2$upper %||% "Default",
-    "BPnd Start Value" = model_config$BPnd$start %||% "Default",
-    "BPnd Lower Bound" = model_config$BPnd$lower %||% "Default",
-    "BPnd Upper Bound" = model_config$BPnd$upper %||% "Default",
-    "Multstart Iterations" = model_config$multstart_iter %||% 1
+    "Model Type" = "MRTM2 (Multilinear Reference Tissue Model 2)"
   )
+
+  # Handle k2prime parameter configuration display
+  if (!is.null(model_config$k2prime_source)) {
+    # Inheritance system (Models 2 and 3)
+    k2prime_source <- model_config$k2prime_source
+
+    if (k2prime_source == "set") {
+      k2prime_source_display <- "Set to fixed value"
+    } else if (str_detect(k2prime_source, "inherit_model1")) {
+      inherit_method <- str_split(k2prime_source, "_")[[1]][3]
+      k2prime_source_display <- paste0("Inherited from Model 1 (", str_to_title(inherit_method), ")")
+    } else if (str_detect(k2prime_source, "inherit_model2")) {
+      inherit_method <- str_split(k2prime_source, "_")[[1]][3]
+      k2prime_source_display <- paste0("Inherited from Model 2 (", str_to_title(inherit_method), ")")
+    } else {
+      k2prime_source_display <- k2prime_source
+    }
+
+    config_items[["k2prime Parameter Source"]] <- k2prime_source_display
+  } else {
+    # Model 1 system - use k2prime value directly
+    k2prime_value <- model_config$k2prime %||% "Not set"
+    config_items[["k2prime Value"]] <- k2prime_value
+  }
+
+  # Add t* configuration if present
+  if (!is.null(model_config$tstar)) {
+    tstar_type <- model_config$tstar_type %||% "frames"
+    config_items[["t* Value"]] <- model_config$tstar
+    config_items[["t* Type"]] <- tstar_type
+  } else {
+    config_items[["t* Value"]] <- "Not set (use all frames)"
+  }
 
   # Add subset information if configured
   if (!is.null(model_config$subset)) {
@@ -122,20 +144,20 @@ if (!is.null(model_config) && model_config$type == "SRTM") {
     Value = map_chr(config_items, as.character)
   )
 
-  kable(config_df, caption = "SRTM Model Configuration")
+  kable(config_df, caption = "MRTM2 Model Configuration")
 
 } else {
-  cat("SRTM model configuration not found or incomplete.")
+  cat("MRTM2 model configuration not found or incomplete.")
 }
 ```
 
 ```{r setup-conditions, echo=FALSE}
-# Verify we have a valid SRTM configuration
-has_srtm_config <- !is.null(model_config) && model_config$type == "SRTM"
+# Verify we have a valid MRTM2 configuration
+has_mrtm2_config <- !is.null(model_config) && model_config$type == "MRTM2"
 
-# Exit early if not a SRTM configuration
-if (!has_srtm_config) {
-  cat("Invalid or missing SRTM configuration. This report should not have been generated.")
+# Exit early if not a MRTM2 configuration
+if (!has_mrtm2_config) {
+  cat("Invalid or missing MRTM2 configuration. This report should not have been generated.")
   knitr::knit_exit()
 }
 ```
@@ -201,8 +223,85 @@ ref_data <- tibble(
   mutate(ref_tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x), show_col_types = FALSE))) %>%
   ungroup() %>%
   unnest(ref_tacs) %>%
-  select(-basename, -measurement, -desc, -filename) %>% 
+  select(-basename, -measurement, -desc, -filename) %>%
   select(-volume_mm3)
+```
+
+
+```{r k2prime-loading-setup, echo=FALSE}
+# Determine inheritance for k2prime
+if(!is.null(model_config$k2prime_source) &&
+   str_detect(model_config$k2prime_source, "inherit")) {
+  k2prime_inheritance <- TRUE
+} else {
+  k2prime_inheritance <- FALSE
+}
+```
+
+
+```{r heading-k2prime, echo=k2prime_inheritance, eval=k2prime_inheritance, results='asis'}
+str_glue("## Loading k2prime Information
+
+         The model has been defined to inherit a k2prime value from a previous model run.
+         ")
+```
+
+
+```{r load-k2prime, echo=k2prime_inheritance, eval=k2prime_inheritance}
+k2prime_inheritance_model <- str_match(model_config$k2prime_source, "inherit_(model\\d)")[,2]
+k2prime_inheritance_type <- str_match(model_config$k2prime_source, "inherit_model\\d_(\\w*)")[,2]
+
+k2prime_data <- tibble(
+  filename = list.files(analysis_folder,
+                        pattern = paste0("*_desc-", k2prime_inheritance_model,"_kinpar.tsv"),
+                       recursive = TRUE, full.names = TRUE)
+)
+
+if( nrow(k2prime_data)==0 ) {
+  cat("No k2prime data found for inheritance.")
+  cat("k2prime will be set to 0.1")
+
+  k2prime_data <- tac_data %>%
+    select(any_of(c("sub", "ses", "trc", "rec", "task", "run", "pet"))) %>%
+    distinct() %>%
+    mutate(k2prime = 0.1)
+
+} else{
+
+  k2prime_data <- k2prime_data %>%
+    mutate(attributes = map(filename, kinfitr:::bids_filename_attributes)) %>%
+    unnest(attributes) %>%
+    filter(!is.na(sub)) %>%
+    mutate(pet = str_remove(basename(filename), "_model.*.*")) %>%
+    mutate(pet = str_remove(basename(pet), "_desc.*")) %>%
+    mutate(pet = str_remove(pet, "_kinpar.*")) %>%
+    mutate(k2prime_kp = map(filename, read_tsv)) %>%
+    select(-filename, -measurement, -desc) %>%
+    group_by(pet)
+
+  # Calculation
+  if(k2prime_inheritance_type == "mean") {
+    k2prime_data <- k2prime_data %>%
+      mutate(k2prime=map_dbl(k2prime_kp, ~mean(.x$k2prime, na.rm = TRUE))) %>%
+    select(-k2prime_kp) %>%
+    ungroup()
+  }
+
+  if(k2prime_inheritance_type == "median") {
+  k2prime_data <- k2prime_data %>%
+    mutate(k2prime=map_dbl(k2prime_kp, ~median(.x$k2prime, na.rm = TRUE))) %>%
+    select(-k2prime_kp) %>%
+    ungroup()
+  }
+
+  if(k2prime_inheritance_type == "regional") {
+  k2prime_data <- k2prime_data %>%
+    mutate(k2prime_kp = map(k2prime_kp, ~.x %>%
+                         select(region, k2prime))) %>%
+    unnest(k2prime_kp) %>%
+    ungroup()
+  }
+}
 ```
 
 
@@ -216,7 +315,7 @@ model_data <- tac_data %>%
   mutate(frame_start = frame_start/60,
          frame_end = frame_end/60,
          frame_dur = frame_dur/60,
-         frame_mid = frame_mid/60) %>% 
+         frame_mid = frame_mid/60) %>%
   nest(.key="tacs") %>%
   ungroup() %>%
   mutate(output_stem = filename) %>%
@@ -226,26 +325,26 @@ model_data <- tac_data %>%
   mutate(output_stem = str_remove(output_stem, "_tacs.*"))
 ```
 
+```{r combine-k2prime, echo=k2prime_inheritance, eval=k2prime_inheritance}
+model_data <- model_data %>%
+  left_join(k2prime_data)
+```
 
-# SRTM Model Fitting
 
-Now we proceed to the actual SRTM model fitting using all available regional TACs.
+# MRTM2 Model Fitting
+
+Now we proceed to the actual MRTM2 model fitting using all available regional TACs.
 
 ```{r model-prep}
-# Extract model parameters from configuration
-R1_start <- model_config$R1$start %||% 1
-R1_lower <- model_config$R1$lower %||% 0
-R1_upper <- model_config$R1$upper %||% 10
+# Extract t* parameters from configuration (optional)
+tstar <- model_config$tstar %||% NULL
+tstar_type <- model_config$tstar_type %||% "frames"
 
-k2_start <- model_config$k2$start %||% 0.1
-k2_lower <- model_config$k2$lower %||% 0
-k2_upper <- model_config$k2$upper %||% 1
-
-bp_start <- model_config$BPnd$start %||% 1.5
-bp_lower <- model_config$BPnd$lower %||% 0
-bp_upper <- model_config$BPnd$upper %||% 15
-
-multstart_iter <- model_config$multstart_iter %||% 1
+# Set k2prime if not being inherited
+k2prime_source <- model_config$k2prime_source %||% "set"
+if(k2prime_source == "set") {
+  model_data$k2prime <- model_config$k2prime %||% 0.1
+}
 
 # Extract TAC subset parameters
 subset_config <- model_config$subset
@@ -263,31 +362,24 @@ if (!is.null(subset_config) && (!is.null(subset_config$start) || !is.null(subset
 
 
 ```{r model-fitting, warning=TRUE}
-# Safe SRTM function to handle errors
-safe_srtm <- possibly(srtm, otherwise = NA)
+# Safe MRTM2 function to handle errors
+safe_mrtm2 <- possibly(mrtm2, otherwise = NA)
 
-# Fit SRTM model to all regional TACs
+# Fit MRTM2 model to all regional TACs
 model_data <- model_data %>%
   group_by(output_stem, region) %>%
-  mutate(fit_srtm = map(tacs,
-                         ~safe_srtm(t_tac = .x$frame_mid,
-                                    reftac = .x$RefTAC,
-                                    roitac = .x$TAC,
-                                    weights = .x$weights,
+  mutate(fit_mrtm2 = pmap(list(tacs, k2prime),
+                         ~safe_mrtm2(t_tac = ..1$frame_mid,
+                                    reftac = ..1$RefTAC,
+                                    roitac = ..1$TAC,
+                                    k2prime = ..2,
+                                    weights = ..1$weights,
+                                    tstar = tstar,
+                                    tstar_type = tstar_type,
                                     frameStartEnd = frameStartEnd,
-                                    timeStartEnd = timeStartEnd,
-                                    R1.start = R1_start,
-                                    R1.lower = R1_lower,
-                                    R1.upper = R1_upper,
-                                    k2.start = k2_start,
-                                    k2.lower = k2_lower,
-                                    k2.upper = k2_upper,
-                                    bp.start = bp_start,
-                                    bp.lower = bp_lower,
-                                    bp.upper = bp_upper,
-                                    multstart_iter = multstart_iter))) %>%
+                                    timeStartEnd = timeStartEnd))) %>%
   ungroup() %>%
-  mutate(success = map_dbl(fit_srtm, length) > 1)
+  mutate(success = map_dbl(fit_mrtm2, length) > 1)
 ```
 
 ```{r, results='asis'}
@@ -312,8 +404,8 @@ model_data <- model_data %>%
 ```{r}
 model_res <- model_data %>%
   ungroup() %>%
-  mutate(par = map(fit_srtm, "par")) %>%
-  select(-fit_srtm, -tacs)
+  mutate(par = map(fit_mrtm2, "par")) %>%
+  select(-fit_mrtm2, -tacs)
 ```
 
 ### Estimates
@@ -322,7 +414,7 @@ model_res <- model_data %>%
 par_table <- model_res %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
-  unnest(par) %>% 
+  unnest(par) %>%
   rename(BPnd = bp)
 
 par_table %>%
@@ -337,12 +429,12 @@ Here is shown the standard error as a fraction of the mean value (i.e. 1 = 100\%
 ```{r}
 par_se_table <- model_data %>%
   ungroup() %>%
-  mutate(par.se = map(fit_srtm, "par.se")) %>%
-  select(-fit_srtm, -tacs) %>%
+  mutate(par.se = map(fit_mrtm2, "par.se")) %>%
+  select(-fit_mrtm2, -tacs) %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
   unnest(par.se) %>%
-  select(where(~ mean(is.na(.x)) < 1)) %>% 
+  select(where(~ mean(is.na(.x)) < 1)) %>%
   rename(BPnd.se = bp.se)
 
 par_se_table %>%
@@ -363,12 +455,12 @@ reduced_chisq <- function(fit) {
 
 gof_table <- model_data %>%
   ungroup() %>%
-  mutate(gof = map(fit_srtm, ~tibble(
+  mutate(gof = map(fit_mrtm2, ~tibble(
     AIC = AIC(.x$fit),
     BIC = BIC(.x$fit),
     RSS = RSS(.x$fit),
     reduced_chisq = reduced_chisq(.x$fit)))) %>%
-  select(-fit_srtm, -tacs) %>%
+  select(-fit_mrtm2, -tacs) %>%
   select(-output_stem) %>%
   select(where(~ n_distinct(.x) > 1)) %>%
   unnest(gof) %>%
@@ -386,9 +478,13 @@ gof_table %>%
 
 #### Overall Histogram
 
-```{r, fig.width=7, fig.height=7}
+```{r, fig.width=7, fig.height=5}
+# Dynamically select available parameters (only R1 and BPnd)
+# Note: k2prime is not fitted in MRTM2, it's a prior value
+available_params <- intersect(colnames(par_table), c("R1", "BPnd"))
+
 par_table_long <- par_table %>%
-  pivot_longer(cols=c(R1, k2, BPnd, k2prime),
+  pivot_longer(cols=any_of(available_params),
                names_to = "Parameter",
                values_to = "Value")
 
@@ -402,7 +498,7 @@ ggplot(par_table_long, aes(x=Value, fill=Parameter)) +
 
 #### Histograms By Region
 
-```{r, fig.width=7, fig.height=7}
+```{r, fig.width=7, fig.height=5}
 ggplot(par_table_long, aes(x=Value, fill=region)) +
   geom_histogram(colour="black") +
   facet_wrap(~Parameter, scales="free", ncol=2)
@@ -416,7 +512,7 @@ ggplot(par_table_long, aes(x=Value, fill=region)) +
 ```{r, fig.height=4, fig.width=6}
 fitplots <- model_data %>%
   mutate(title = paste(pet, " : ", region)) %>%
-  mutate(fitplot = pmap(list(fit_srtm, region, title),
+  mutate(fitplot = pmap(list(fit_mrtm2, region, title),
                         ~plot(..1, roiname=..2) +
                           labs(title = ..3,
                                y = "Radioactivity (kBq)",
@@ -431,7 +527,7 @@ walk(fitplots, ~print(.x))
 ```{r, fig.height=4, fig.width=6}
 resplots <- model_data %>%
   mutate(title = paste(pet, " : ", region)) %>%
-  mutate(resplot = pmap(list(fit_srtm, title),
+  mutate(resplot = pmap(list(fit_mrtm2, title),
                         ~plot_residuals(..1) +
                           labs(title = ..2))) %>%
   pull(resplot)
@@ -455,7 +551,7 @@ savepar <- inner_join(par_table,
 
 write_tsv(savepar,
           file=paste0(analysis_folder, "/",
-                      "model_", "SRTM","_",
+                      "model_", "MRTM2","_",
                       "desc-", desc,"_",
                       "kinpar.tsv"))
 ```
@@ -477,7 +573,7 @@ savepar_pet <- savepar %>%
   nest(.key="kinpars") %>%
   inner_join(folder_data) %>%
   mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_",
-                           "model_", "SRTM","_",
+                           "model_", "MRTM2","_",
                             "desc-", desc,"_",
                             "kinpar.tsv"))
 
@@ -485,12 +581,27 @@ walk2(savepar_pet$kinpars, savepar_pet$filename, ~write_tsv(.x, .y))
 ```
 
 ```{r}
+# Determine t* description for JSON metadata
+tstar_desc <- if (!is.null(tstar)) {
+  paste0("t* = ", tstar, " (", tstar_type, ")")
+} else {
+  "All frames used (no t* restriction)"
+}
+
+# Determine k2prime source for JSON metadata
+k2prime_source_desc <- if (!is.null(model_config$k2prime_source) &&
+                           str_detect(model_config$k2prime_source, "inherit")) {
+  config_items[["k2prime Parameter Source"]]
+} else {
+  paste0("Set to fixed value: ", model_config$k2prime %||% 0.1)
+}
+
 savepar_pet <- savepar_pet %>%
   group_by(pet) %>%
   mutate(jsondat = map(kinpars, ~list(
-      Description = "Simplified Reference Tissue Model fit using nonlinear least squares estimation.",
-      ModelName = "SRTM",
-      AdditionalModelDetails = "Reference tissue model - no blood data required"))) %>%
+      Description = "Multilinear Reference Tissue Model 2 fit using linear regression.",
+      ModelName = "MRTM2",
+      AdditionalModelDetails = str_glue("Reference tissue model - no blood data required. {tstar_desc}. k2prime source: {k2prime_source_desc}")))) %>%
   mutate(jsondat = jsonlite::toJSON(jsondat, pretty = TRUE, auto_unbox = TRUE)) %>%
   mutate(filename_json = str_replace(filename, ".tsv", ".json"))
 
@@ -506,7 +617,7 @@ walk2(savepar_pet$jsondat,
 ```{r}
 savefits <- model_data %>%
   filter(success) %>%
-  mutate(fitvals = map(fit_srtm, ~{
+  mutate(fitvals = map(fit_mrtm2, ~{
     .x$tacs %>%
       mutate(Weights = .x$weights) %>%
       select(
@@ -517,7 +628,7 @@ savefits <- model_data %>%
         weights = Weights
       )
   })) %>%
-  select(any_of(c("sub", "ses", "task", "trc", "run", 
+  select(any_of(c("sub", "ses", "task", "trc", "run",
                   "rec", "pet", "region")), fitvals) %>%
   unnest(cols=c("fitvals")) %>%
   group_by(across(intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
@@ -527,7 +638,7 @@ savefits <- model_data %>%
 savefits_pet <- savefits %>%
   inner_join(folder_data) %>%
   mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_",
-                           "model_", "SRTM","_",
+                           "model_", "MRTM2","_",
                             "desc-", desc,"fitted",
                             "_",
                             "tacs.tsv"))
@@ -539,8 +650,9 @@ walk2(savefits_pet$fitvals, savefits_pet$filename, ~write_tsv(.x, .y))
 savefits_pet <- savefits_pet %>%
   group_by(pet) %>%
   mutate(jsondat = map(fitvals, ~list(
-      Description = "Simplified Reference Tissue Model fitted values.",
-      ModelName = "SRTM",
+      Description = "Multilinear Reference Tissue Model 2 fitted values.",
+      ModelName = "MRTM2",
+      AdditionalModelDetails = str_glue("{tstar_desc}. k2prime source: {k2prime_source_desc}"),
       frame_mid = "The frame middle time in minutes",
       TAC = "TAC radioactivity data in kBq to which the model was fitted.",
       TAC_fitted = "Model fitted values.",

@@ -3,6 +3,7 @@ title: "Reference TAC Report"
 output:
   html_document:
     toc: true
+    toc_float: true
     toc_depth: 2
     code_folding: hide
 params:
@@ -13,10 +14,10 @@ params:
 
 <!-- For temporary debugging, this defines temporary parameters for the parameterised report -->
 
-```{r}
-analysis_folder <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/derivatives/petfit/Secondary_Analysis/"
-bids_dir <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/"
-```
+<!-- ```{r} -->
+<!-- analysis_folder <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/derivatives/petfit/Secondary_Analysis/" -->
+<!-- bids_dir <- "/home/granville/Repositories/OpenNeuro/Demo/ds004869/" -->
+<!-- ``` -->
 
 
 ```{r setup, include=FALSE}
@@ -115,10 +116,9 @@ if (!is.null(config$ReferenceTAC)) {
   if ((ref_tac$fitting_method %||% "raw") != "raw") {
     config_items[["Reference Weighting Method"]] <- weights_method_display
 
+    # Only show custom formula if user selected custom weights
     if ((ref_tac$weights_method %||% "same_as_target") == "custom") {
       config_items[["Custom Formula"]] <- ref_tac$weights_custom_formula %||% "Not specified"
-    } else if ((ref_tac$weights_method %||% "same_as_target") != "same_as_target") {
-      config_items[["Weights Formula"]] <- ref_tac$weights_formula %||% "Not specified"
     }
 
     if ((ref_tac$weights_method %||% "same_as_target") != "same_as_target" &&
@@ -170,16 +170,26 @@ if (length(tacs_files) == 0) {
   stop("No TAC files found in analysis folder: ", analysis_folder)
 }
 
-tac_data <- tibble(
-  filename = tacs_files) %>%
-  mutate(basename = basename(filename)) %>%
-  mutate(attributes = map(filename, kinfitr:::bids_filename_attributes)) %>%
-  unnest(attributes) %>%
-  group_by(filename) %>%
-  mutate(tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x), show_col_types = FALSE))) %>%
-  ungroup() %>%
-  unnest(tacs) %>%
-  select(-basename, -measurement, -desc)
+# Define column types to ensure BIDS identifiers are always character
+bids_col_types <- cols(
+  sub = col_character(),
+  ses = col_character(),
+  trc = col_character(),
+  rec = col_character(),
+  task = col_character(),
+  run = col_character(),
+  pet = col_character(),
+  segmentation = col_character(),
+  region = col_character(),
+  .default = col_guess()
+)
+
+# Read TAC files - BIDS identifiers are already in the TSV files,
+# so we only need the filename for tracking
+tac_data <- tibble(filename = tacs_files) %>%
+  mutate(tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x),
+                                        col_types = bids_col_types))) %>%
+  unnest(tacs)
 ```
 
 
@@ -213,14 +223,15 @@ str_glue("Reference region **{ref_region_name}** found for {pet_with_refs} of {u
 
 
 ```{r}
-ref_tac_data <- tac_data %>% 
-  filter(region == ref_region_name) %>% 
-  select(-filename, -region) %>% 
+ref_tac_data <- tac_data %>%
+  filter(region == ref_region_name) %>%
+  rename(tac_filename = filename) %>%
+  select(-region) %>%
   rename(RefTAC = TAC)
 
-target_tac_data <- tac_data %>% 
-  filter(region != ref_region_name) %>% 
-  select(-filename)
+target_tac_data <- tac_data %>%
+  filter(region != ref_region_name) %>%
+  rename(tac_filename = filename)
 ```
 
 
@@ -412,9 +423,16 @@ Using raw (unfitted) reference TAC for modelling.")
 # No fitting is performed
 ref_tac_preddata <- ref_tac_data %>%
   group_by(across(intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
-                                           "run", "pet", "filename")))) %>%
+                                           "run", "pet", "tac_filename")))) %>%
   nest(.key = "ref_tacs") %>%
-  ungroup()
+  ungroup() %>%
+  mutate(ref_tacs_json = map(1:n(), ~list(
+    Description = "Raw Reference TAC (no fitting applied).",
+    ModelName = "Raw",
+    FittingMethod = "raw",
+    AdditionalModelDetails = str_glue("Reference region: {ref_region_name}. No fitting performed."),
+    RefTAC = "Original reference TAC (unmodified)"
+  )))
 ```
 
 
@@ -491,10 +509,10 @@ Fitting reference TAC using Feng arterial input function combined with one-tissu
 ```
 
 ```{r feng1tc-fitting, eval=use_feng1tc, echo=use_feng1tc}
-ref_tac_fitdata <- ref_tac_data %>% 
-  inner_join(ref_weights_final) %>% 
+ref_tac_fitdata <- ref_tac_data %>%
+  inner_join(ref_weights_final) %>%
   group_by(across(intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
-                                           "run", "pet")))) %>%
+                                           "run", "pet", "tac_filename")))) %>%
   nest(.key = "ref_tacs") 
 
 ref_tac_fitdata <- ref_tac_fitdata %>%
@@ -516,18 +534,66 @@ ref_tac_preddata <- ref_tac_fitdata %>%
                                  RefTAC = RefTAC_fitted,
                                  RefTAC_weights = ref_weights))) %>%
   select(-ref_preds) %>%
-  mutate(ref_tacs_json = map(1:n(), ~list(RefTAC = "Modelled reference TAC",
-                                  RefTAC_original = "Original reference TAC",
-                                  RefTAC_weights = "Weights used for reference TAC fitting")))
-
-ref_tac_pardata <- ref_tac_fitdata %>% 
-  mutate(ref_pars = map(ref_fit, "par")) %>% 
-  select(-ref_fit)
+  mutate(ref_tacs_json = map(1:n(), ~list(
+    Description = "Feng+1TC Reference TAC Model fitted values.",
+    ModelName = "Feng+1TC",
+    FittingMethod = "feng1tc",
+    AdditionalModelDetails = str_glue("Reference region: {ref_region_name}. Weighting: {weights_method_display}"),
+    RefTAC = "Modelled reference TAC (fitted values for use in modelling)",
+    RefTAC_original = "Original measured reference TAC",
+    RefTAC_weights = "Weights used for reference TAC fitting"
+  )))
 ```
 
 
 ```{r feng1tc-saving, eval=use_feng1tc, echo=use_feng1tc}
+# Extract parameters from ref_tac_fitdata (using ref_fit objects)
+feng_pars_save <- ref_tac_fitdata %>%
+  mutate(kinpars = map(ref_fit, ~.x$par)) %>%
+  select(-ref_tacs, -ref_fit) %>%
+  unnest(kinpars)
 
+# Get folder info for saving
+folder_data <- tac_data %>%
+  filter(!duplicated(filename)) %>%
+  rename(tac_filename = filename) %>%
+  mutate(dirname = dirname(tac_filename)) %>%
+  select(pet, dirname)
+
+# Save TSV with parameters for each PET measurement
+feng_kinpar_save <- feng_pars_save %>%
+  inner_join(folder_data) %>%
+  mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_model-feng1tc_desc-ref_kinpar.tsv")) %>%
+  nest(kinpar = c(t0, A, B, C, alpha, beta, gamma, Ph1, Th1))
+
+walk2(feng_kinpar_save$kinpar,
+      feng_kinpar_save$filename,
+      ~write_tsv(.x, .y))
+
+# Save JSON sidecar for parameters (reactive to method settings)
+feng_json_output <- list(
+  Description = "Feng+1TC Reference TAC Model fitting parameters.",
+  ModelName = "Feng+1TC",
+  FittingMethod = "feng1tc",
+  AdditionalModelDetails = str_glue("Reference region: {ref_region_name}. Weighting: {weights_method_display}"),
+  t0 = "Time point at which curve begins to rise (minutes)",
+  A = "Feng AIF model amplitude parameter A",
+  B = "Feng AIF model amplitude parameter B",
+  C = "Feng AIF model amplitude parameter C",
+  alpha = "Feng AIF model rate parameter alpha",
+  beta = "Feng AIF model rate parameter beta",
+  gamma = "Feng AIF model rate parameter gamma",
+  Ph1 = "1TC IRF model Phi1 parameter (uptake)",
+  Th1 = "1TC IRF model Theta2 parameter (clearance)"
+)
+
+feng_json_output <- jsonlite::toJSON(feng_json_output, pretty = TRUE, auto_unbox = TRUE)
+
+# Write JSON for each PET
+walk(feng_kinpar_save$filename, ~{
+  json_filename <- str_replace(.x, ".tsv", ".json")
+  writeLines(feng_json_output, json_filename)
+})
 ```
 
 
@@ -554,10 +620,10 @@ Fitting reference TAC using smooth spline with **{spline_df}** degrees of freedo
 ```{r spline-fitting, eval=use_spline, echo=use_spline}
 spline_df <- as.numeric(config$ReferenceTAC$spline_df %||% -1)
 
-ref_tac_fitdata <- ref_tac_data %>% 
-  inner_join(ref_weights_final) %>% 
+ref_tac_fitdata <- ref_tac_data %>%
+  inner_join(ref_weights_final) %>%
   group_by(across(intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
-                                           "run", "pet")))) %>%
+                                           "run", "pet", "tac_filename")))) %>%
   nest(.key = "ref_tacs") 
 
 ref_tac_fitdata <- ref_tac_fitdata %>%
@@ -579,10 +645,57 @@ ref_tac_preddata <- ref_tac_fitdata %>%
                                  RefTAC = RefTAC_fitted,
                                  RefTAC_weights = ref_weights))) %>%
   select(-ref_preds) %>%
-  mutate(ref_tacs_json = map(1:n(), ~list(RefTAC = "Modelled reference TAC",
-                                  RefTAC_original = "Original reference TAC",
-                                  RefTAC_weights = "Weights used for reference TAC fitting")))
+  mutate(ref_tacs_json = map(1:n(), ~list(
+    Description = "Spline Reference TAC Model fitted values.",
+    ModelName = "Spline",
+    FittingMethod = "spline",
+    AdditionalModelDetails = str_glue("Reference region: {ref_region_name}. Weighting: {weights_method_display}. Degrees of freedom: {spline_df}"),
+    RefTAC = "Modelled reference TAC (fitted values for use in modelling)",
+    RefTAC_original = "Original measured reference TAC",
+    RefTAC_weights = "Weights used for reference TAC fitting"
+  )))
+```
 
+```{r spline-saving, eval=use_spline, echo=use_spline}
+# Extract t0 from spline fits
+spline_pars_save <- ref_tac_fitdata %>%
+  mutate(t0 = map_dbl(ref_fit, ~.x$par$t0)) %>%
+  select(-ref_tacs, -ref_fit)
+
+# Get folder info for saving
+folder_data <- tac_data %>%
+  filter(!duplicated(filename)) %>%
+  rename(tac_filename = filename) %>%
+  mutate(dirname = dirname(tac_filename)) %>%
+  select(pet, dirname)
+
+# Save TSV with t0 for each PET measurement
+spline_kinpar_save <- spline_pars_save %>%
+  inner_join(folder_data) %>%
+  mutate(filename = paste0(analysis_folder, "/", dirname, "/", pet, "_model-spline_desc-ref_kinpar.tsv")) %>% 
+  nest(kinpar = c(t0))
+  
+
+walk2(spline_kinpar_save$kinpar,
+      spline_kinpar_save$filename,
+      ~write_tsv(.x, .y))
+
+# Save JSON sidecar for parameters (reactive to method settings)
+spline_json_output <- list(
+  Description = "Spline Reference TAC Model fitting parameters.",
+  ModelName = "Spline",
+  FittingMethod = "spline",
+  AdditionalModelDetails = str_glue("Reference region: {ref_region_name}. Weighting: {weights_method_display}. Degrees of freedom: {spline_df}"),
+  t0 = "Time point at which curve begins to rise (minutes)"
+)
+
+spline_json_output <- jsonlite::toJSON(spline_json_output, pretty = TRUE, auto_unbox = TRUE)
+
+# Write JSON for each PET
+walk(spline_kinpar_save$filename, ~{
+  json_filename <- str_replace(.x, ".tsv", ".json")
+  writeLines(spline_json_output, json_filename)
+})
 ```
 
 
@@ -601,51 +714,54 @@ walk2(ref_tac_fitdata$ref_fit,
 # Saving Outcomes
 
 ```{r save-reference-tacs}
-save_files <- tac_data %>% 
-  filter(!duplicated(filename)) %>% 
-  mutate(filename_tsv = str_replace(filename,
-                                "desc-combinedregions_tacs.tsv",
-                                "desc-ref_tacs.tsv")) %>% 
-  mutate(filename_json = str_replace(filename,
-                                "desc-combinedregions_tacs.tsv",
-                                "desc-ref_tacs.json")) %>% 
-  select(-filename) %>% 
+save_files <- tac_data %>%
+  filter(!duplicated(filename)) %>%
+  rename(tac_filename = filename) %>%
   select((intersect(colnames(.), c("sub", "ses", "trc", "rec", "task",
-                                   "run", "pet", 
-                                   "filename_tsv",
-                                   "filename_json")))) %>% 
-  inner_join(ref_tac_preddata)
+                                   "run", "pet", "tac_filename")))) %>%
+  inner_join(ref_tac_preddata, by = intersect(colnames(.), colnames(ref_tac_preddata)))
 
+# Save reference TAC TSV files
 save_files %>%
-  pwalk(function(ref_tacs, filename_tsv, ...) {
-    write_tsv(ref_tacs, 
-              file = paste0(analysis_folder, "/", filename_tsv))
+  pwalk(function(ref_tacs, tac_filename, ...) {
+    reftac_filename <- str_replace(tac_filename,
+                                   "desc-combinedregions_tacs.tsv",
+                                   "desc-ref_tacs.tsv")
+    write_tsv(ref_tacs,
+              file = paste0(analysis_folder, "/", reftac_filename))
   })
 
-
+# Save reference TAC JSON metadata files
 save_files %>%
-  pwalk(function(ref_tacs_json, filename_json, ...) {
+  pwalk(function(ref_tacs_json, tac_filename, ...) {
+    reftac_filename <- str_replace(tac_filename,
+                                   "desc-combinedregions_tacs.tsv",
+                                   "desc-ref_tacs.json")
     write_json(ref_tacs_json,
-               path = paste0(analysis_folder, "/", filename_json),
-               pretty=TRUE)
+               path = paste0(analysis_folder, "/", reftac_filename),
+               pretty = TRUE,
+               auto_unbox = TRUE)
   })
 ```
 
-## Updating Target TAC Files
+## Saving Target TAC Files
 
-The reference region is removed from the target TAC files so it is not used as a target region during model fitting.
+The target TAC files contain all regions except the reference region, for use in model fitting.
 
-```{r save-updated-target-tacs}
+```{r save-target-tacs}
 # Get target TACs (excluding reference region) with filename info
 target_tac_files <- tac_data %>%
   filter(region != ref_region_name)
 
-# Save updated combinedregions_tacs.tsv files (overwriting originals)
+# Save as new targetregions files (preserving original combinedregions files)
 target_tac_files %>%
   group_by(filename) %>%
   group_walk(~{
-    write_tsv(.x %>% select(-filename),
-              file = paste0(analysis_folder, "/", .y$filename))
+    target_filename <- str_replace(.y$filename,
+                                   "desc-combinedregions_tacs.tsv",
+                                   "desc-targetregions_tacs.tsv")
+    write_tsv(.x,
+              file = paste0(analysis_folder, "/", target_filename))
   })
 ```
 
