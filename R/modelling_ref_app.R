@@ -2410,6 +2410,38 @@ modelling_ref_app <- function(bids_dir = NULL, derivatives_dir = NULL, blood_dir
     })
 
     # ===========================================================================
+    # Model Type Change Handlers - Auto-switch tstar_type for refLogan
+    # ===========================================================================
+    # refLogan requires t* (no "none" option), so auto-switch from "none" to "frame"
+
+    # Model 1: When switching to refLogan, set tstar_type to "frame"
+    observeEvent(input$button, {
+      if (input$button == "refLogan" && !is.null(input$tstar_type)) {
+        if (input$tstar_type == "none") {
+          updateSelectInput(session, "tstar_type", selected = "frame")
+        }
+      }
+    })
+
+    # Model 2: Same for button2/tstar_type2
+    observeEvent(input$button2, {
+      if (input$button2 == "refLogan" && !is.null(input$tstar_type2)) {
+        if (input$tstar_type2 == "none") {
+          updateSelectInput(session, "tstar_type2", selected = "frame")
+        }
+      }
+    })
+
+    # Model 3: Same for button3/tstar_type3
+    observeEvent(input$button3, {
+      if (input$button3 == "refLogan" && !is.null(input$tstar_type3)) {
+        if (input$tstar_type3 == "none") {
+          updateSelectInput(session, "tstar_type3", selected = "frame")
+        }
+      }
+    })
+
+    # ===========================================================================
     # Shared Step Execution Functions
     # ===========================================================================
     # These thin wrappers save config then delegate to core functions in pipeline_core.R
