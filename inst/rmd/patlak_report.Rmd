@@ -13,15 +13,6 @@ params:
   blood_dir: NULL
 ---
 
-<!-- For temporary debugging, this defines temporary parameters for the parameterised report -->
-
-<!-- # ```{r} -->
-<!-- # analysis_folder <- "/home/granville/Repositories/OpenNeuro/KaSP_UCBJ_BIDS_mini/derivatives/petfit/Primary_Analysis/" -->
-<!-- # blood_dir <-"/home/granville/Repositories/OpenNeuro/KaSP_UCBJ_BIDS_mini/derivatives/bloodstream" -->
-<!-- # model_number <- "Model 3" -->
-<!-- # ``` -->
-
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 library(tidyverse)
