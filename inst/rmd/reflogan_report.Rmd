@@ -1,5 +1,5 @@
 ---
-title: "Reference Logan Graphical Analysis Report"
+title: "Non-Invasive Logan Graphical Analysis Report"
 output:
   html_document:
     toc: true
@@ -57,7 +57,9 @@ file.remove(oldfiles)
 
 
 
-This report summarises the Reference Logan (refLogan) graphical analysis model fitting step.
+This report summarises the model fitting step using Non-Invasive Logan Graphical Analysis (refLogan) (Logan et al., 1996).
+
+> Logan J, Fowler JS, Volkow ND, Wang GJ, Ding YS, Alexoff DL. Distribution volume ratios without blood sampling from graphical analysis of PET data. Journal of Cerebral Blood Flow & Metabolism. 1996 Sep 1;16(5):834-40.
 
 # Analysis Configuration
 

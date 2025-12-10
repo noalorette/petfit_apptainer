@@ -57,7 +57,9 @@ file.remove(oldfiles)
 
 
 
-This report summarises the SRTM2 model fitting step.
+This report summarises the model fitting step using the Simplified Reference Tissue Model 2 (SRTM2) (Wu & Carson, 2002).
+
+> Wu Y, Carson RE. Noise reduction in the simplified reference tissue model for neuroreceptor functional imaging. Journal of Cerebral Blood Flow & Metabolism. 2002;22:1440-1452.
 
 # Analysis Configuration
 

@@ -56,7 +56,9 @@ oldfiles <- list.files(analysis_folder, pattern=desc,
 file.remove(oldfiles)
 ```
 
-This report summarises the Logan graphical analysis results.
+This report summarises the model fitting step using Logan Graphical Analysis (Logan et al., 1990).
+
+> Logan J, Fowler JS, Volkow ND, Wolf AP, Dewey SL, Schlyer DJ, MacGregor RR, Hitzemann R, Bendriem B, Gatley SJ, Christman DR. Graphical Analysis of Reversible Radioligand Binding from Time-Activity Measurements Applied to [11C]Cocaine PET Studies in Human Subjects. Journal of Cerebral Blood Flow & Metabolism. 1990 Sep 1;10(5):740-7.
 
 # Analysis Configuration
 

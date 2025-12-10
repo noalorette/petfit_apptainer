@@ -57,7 +57,9 @@ file.remove(oldfiles)
 
 
 
-This report summarises the MRTM1 model fitting step.
+This report summarises the model fitting step using Ichise's Multilinear Reference Tissue Model (MRTM1) (Ichise et al., 2003).
+
+> Ichise M, Liow JS, Lu JQ, Takano A, Model K, Toyama H, Suhara T, Suzuki K, Innis RB, Carson RE. Linearized Reference Tissue Parametric Imaging Methods: Application to [11C]DASB Positron Emission Tomography Studies of the Serotonin Transporter in Human Brain. Journal of Cerebral Blood Flow & Metabolism. 2003 Sep 1;23(9):1096-112.
 
 # Analysis Configuration
 

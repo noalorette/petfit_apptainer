@@ -55,7 +55,9 @@ file.remove(oldfiles)
 
 
 
-This report summarises the SRTM model fitting step.
+This report summarises the model fitting step using the Simplified Reference Tissue Model (SRTM) (Lammertsma & Hume, 1996).
+
+> Lammertsma AA, Hume SP. Simplified reference tissue model for PET receptor studies. Neuroimage. 1996 Dec 31;4(3):153-8.
 
 # Analysis Configuration
 

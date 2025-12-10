@@ -1664,8 +1664,8 @@ modelling_plasma_app <- function(bids_dir = NULL, derivatives_dir = NULL, blood_
                                actionButton("run_model3", "▶ Fit Model 3", class = "btn-success btn-lg")
                              )
                     ),
-                    # Tab panel for Config Preview ----
-                    tabPanel("Preview Configuration",
+                    # Tab panel for Configuration ----
+                    tabPanel("Configuration",
                              br(),
                              h4("Configuration Settings"),
                              p("Review and save your analysis configuration. The JSON below shows all current settings."),
