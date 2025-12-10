@@ -2,7 +2,7 @@
 # Build Docker image from the docker directory
 
 # Set version
-VERSION="v0.0.9"
+VERSION="v0.1.0"
 
 # Build with version tag (build context is parent directory)
 docker build -f Dockerfile -t mathesong/petfit:${VERSION} .. --platform linux/amd64
