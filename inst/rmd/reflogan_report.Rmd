@@ -142,6 +142,9 @@ if (!is.null(model_config) && model_config$type == "refLogan") {
     config_items[["TAC Subset"]] <- "Use all frames"
   }
 
+  # Add model weights setting
+  config_items[["Use Model Weights"]] <- if(model_config$use_model_weights %||% FALSE) "Yes (transformed)" else "No"
+
   config_df <- tibble(
     Parameter = names(config_items),
     Value = map_chr(config_items, as.character)
@@ -163,6 +166,9 @@ if (!has_reflogan_config) {
   cat("Invalid or missing refLogan configuration. This report should not have been generated.")
   knitr::knit_exit()
 }
+
+# Check if we should use model weights (transformed)
+use_model_weights <- model_config$use_model_weights %||% FALSE
 ```
 
 # Loading Data
@@ -170,22 +176,6 @@ if (!has_reflogan_config) {
 ## Loading TAC Data
 
 ```{r load-tacs}
-weights_files <- list.files(analysis_folder,
-                        pattern = "*_weights.tsv",
-                        recursive = TRUE)
-
-weightsdata <- tibble(
-  filename = weights_files) %>%
-  mutate(basename = basename(filename)) %>%
-  mutate(attributes = map(filename, kinfitr:::bids_filename_attributes)) %>%
-  unnest(attributes) %>%
-  group_by(filename) %>%
-  mutate(tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x), show_col_types = FALSE))) %>%
-  ungroup() %>%
-  unnest(tacs) %>%
-  select(-filename, -basename, -measurement, -desc, -TAC)
-
-
 tacs_files <- list.files(analysis_folder,
                         pattern = "*_desc-targetregions_tacs.tsv",
                         recursive = TRUE)
@@ -199,8 +189,28 @@ tac_data <- tibble(
   mutate(tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x), show_col_types = FALSE))) %>%
   ungroup() %>%
   unnest(tacs) %>%
-  select(-basename, -measurement, -desc) %>%
-  inner_join(weightsdata)
+  select(-basename, -measurement, -desc)
+
+# Conditionally load and join weights data
+if (use_model_weights) {
+  weights_files <- list.files(analysis_folder,
+                          pattern = "*_weights.tsv",
+                          recursive = TRUE)
+
+  weightsdata <- tibble(
+    filename = weights_files) %>%
+    mutate(basename = basename(filename)) %>%
+    mutate(attributes = map(filename, kinfitr:::bids_filename_attributes)) %>%
+    unnest(attributes) %>%
+    group_by(filename) %>%
+    mutate(tacs = map(filename, ~read_tsv(file.path(analysis_folder, .x), show_col_types = FALSE))) %>%
+    ungroup() %>%
+    unnest(tacs) %>%
+    select(-filename, -basename, -measurement, -desc, -TAC)
+
+  tac_data <- tac_data %>%
+    inner_join(weightsdata)
+}
 ```
 
 
@@ -383,7 +393,7 @@ model_data <- model_data %>%
                                     reftac = ..1$RefTAC,
                                     roitac = ..1$TAC,
                                     k2prime = ..2,
-                                    weights = ..1$weights,
+                                    weights = if(use_model_weights) ..1$weights else NULL,
                                     dur = ..1$frame_dur,
                                     tstar = tstar,
                                     tstar_type = tstar_type,
