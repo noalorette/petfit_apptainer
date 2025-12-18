@@ -959,9 +959,10 @@ create_petfit_combined_tacs <- function(petfit_regions_files_path, derivatives_f
 
       if (!is.null(weight_column_found)) {
         # Use _tacs.json bodyweight as primary, participants.tsv as fallback
+        # Convert weight column to numeric (handles "n/a" or other non-numeric values as NA)
         combined_results_with_bids <- combined_results_with_bids %>%
           dplyr::left_join(participant_columns_to_add, by = "sub") %>%
-          dplyr::mutate(bodyweight = dplyr::coalesce(bodyweight, .data[[weight_column_found]])) %>%
+          dplyr::mutate(bodyweight = dplyr::coalesce(bodyweight, as.numeric(.data[[weight_column_found]]))) %>%
           dplyr::select(-dplyr::all_of(weight_column_found))  # Remove the participant weight column, keep bodyweight
       } else {
         # Keep our bodyweight column (from _tacs.json) and add other participant data
